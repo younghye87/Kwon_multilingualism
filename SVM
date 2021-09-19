@@ -1,0 +1,118 @@
+
+clear; clc;
+
+k = 10; %k-fold
+
+classes = [0,1]; % possible classes/labels
+
+load('matrix.mat');
+
+
+% two groups combined residual mat 
+features = sst;
+features_1 = features(1:231,:); %mono 231 multi 104
+features_2 = features(232:end,:);
+
+labels_1 = []; labels_2 = [];
+labels_1 = ones(231,1)*0;
+labels_2= ones(104,1);
+%labels_2 = (ones(110,1));
+labels = [labels_1; labels_2];  
+
+
+cvFolds_1 = cvpartition(labels_1,'Kfold',k);
+cvFolds_2 = cvpartition(labels_2,'Kfold',k);
+
+label_predicted=[];
+label_observed=[];
+  
+  
+for i = 1:k                           % iteratre through each fold
+    Ind_1 = 1:length(labels_1);
+    Ind_2 = 1:length(labels_2);
+    
+    
+   if i == 1
+    testIdx_1 = 1:cvFolds_1.TestSize(i);                % indices of test instances
+    trainIdx_1 = setdiff(Ind_1,testIdx_1);                    % indices training instances
+    testIdx_2 = 1:cvFolds_2.TestSize(i);       % indices of test instances
+    trainIdx_2 = setdiff(Ind_2,testIdx_2); 
+   
+   elseif i == 10
+    
+    testIdx_1 = (cvFolds_1.TestSize(i-1)*(i-2)) + cvFolds_1.TestSize(i-1) :  (cvFolds_1.TestSize(i-1)*(i-2)) + cvFolds_1.TestSize(i-1) + cvFolds_1.TestSize(i) -1;      
+    trainIdx_1 = setdiff(Ind_1,testIdx_1);                    % indices training instances
+    testIdx_2 = (cvFolds_2.TestSize(i-1)*(i-2)) + cvFolds_2.TestSize(i-1)  : (cvFolds_2.TestSize(i-1)*(i-2)) + cvFolds_2.TestSize(i-1) + cvFolds_2.TestSize(i) -1;    
+    trainIdx_2 = setdiff(Ind_2,testIdx_2);   
+    
+   
+   
+   else
+       
+       
+    testIdx_1 = (cvFolds_1.TestSize(i)*(i-1)) : (cvFolds_1.TestSize(i)*(i-1) + cvFolds_1.TestSize(i) -1);      
+    trainIdx_1 = setdiff(Ind_1,testIdx_1);                    % indices training instances
+    testIdx_2 = (cvFolds_2.TestSize(i)*(i-1)) : (cvFolds_2.TestSize(i)*(i-1) + cvFolds_2.TestSize(i) -1); 
+    trainIdx_2 = setdiff(Ind_2,testIdx_2);   
+      
+   end
+  
+   
+      
+      
+   
+  train_features1 = features_1(trainIdx_1,:);
+  train_features2 = features_2(trainIdx_2,:);
+  train_features = cat(1,train_features1, train_features2);
+  
+  train_Idx1 = labels_1(trainIdx_1,:);
+  train_Idx2 = labels_2(trainIdx_2,:);
+  train_Idx = cat(1,train_Idx1, train_Idx2);
+  
+    
+  test_features1 = features_1(testIdx_1,:);
+  test_features2 = features_2(testIdx_2,:);
+  test_features = cat(1,test_features1, test_features2);
+  
+  test_Idx1 = labels_1(testIdx_1,:);
+  test_Idx2 = labels_2(testIdx_2,:);
+  test_Idx = cat(1,test_Idx1, test_Idx2);
+  %test_Idx = logical(test_Idx);
+  
+  
+   % run PCA
+  [coeff,training,latent,tsquared,explained,mu] = pca(train_features,'Centered',false);
+  
+  
+ testing = test_features/coeff';
+     
+  %train the SVM
+ w = ones(length(training),1);
+ w(1:length(train_Idx1),1) = 1/length(train_Idx1);
+ w(length(train_Idx1)+1:end,1) = 1/length(train_Idx2);
+
+ cl = fitcsvm(training, train_Idx,'KernelFunction','rbf','kernelScale','auto','Weight',w,...
+     'OptimizeHyperparameters','auto',...
+     'HyperparameterOptimizationOptions', struct('AcquisitionFunctionName',...
+    'expected-improvement-plus','Showplots',false));
+
+    [label,scores] =  predict(cl, testing);
+    label_predicted = [label_predicted; label];
+    label_observed = [label_observed; test_Idx];
+    
+    eq = sum(label==test_Idx);
+    accuracy(i) = eq/numel(test_Idx);
+    
+    %f1 score
+  tp(i) = sum((label==1) & (test_Idx==1));
+  fp(i) = sum((label==1) & (test_Idx==0));
+  tn(i) = sum((label==0) & (test_Idx==0));
+  fn(i) = sum((label==0) & (test_Idx==1));
+  
+  f1(i) = tp(i)/(tp(i)+1/2*(fp(i)+fn(i)));
+  sens(i) = tp(i)/(tp(i)+fn(i));
+  spec(i) = tn(i)/(tn(i)+fp(i));  
+    
+  
+end
+
