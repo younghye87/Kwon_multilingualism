@@ -1,2 +1,2 @@
-# PNAS_multilingualism
+# Kwon_multilingualism
 Matlab scripts for multilingualism project
