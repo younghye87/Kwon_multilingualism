@@ -1,0 +1,40 @@
+% written by YoungHye Judy Kwon
+
+%permutation + max-T for multiple comparisons and significance test (Apr 20, 2021)
+
+load('behav.mat');
+
+sample1 = mono;
+sample2 = multi;
+x = [sample1; sample2];
+nperm = 1000;
+
+
+for np = 1:nperm
+    labelPerm(:,np)=randperm(size(x,1))';
+end
+
+
+for np = 1:nperm
+for i = 1:size(sample1,2)
+behav_temp = x(labelPerm(:,np),i);
+sample1_temp = behav_temp(1:size(sample1,1),:);
+sample2_temp = behav_temp((size(sample1,1)+1):end,:);
+[~,~,~,stat] = ttest2(sample2_temp, sample1_temp);
+all_val(np,i) = stat.tstat;
+%  max_val(np,i) = max(diffPerm); %store max value across tasks per permutation (resulting in 1x1000 matrix)
+end
+end
+
+ max_all_Val = max(all_val,[],2);
+
+for j = 1:size(sample1,2)
+%    diff_obs(j) = nanmean(sample2(:,j)) - nanmean(sample1(:,j));
+[~,~,~,stat] = ttest2(sample2(:,j), sample1(:,j));
+diff_obs(j)=stat.tstat
+diff_obs_df(j)=stat.df;
+
+nLarge(j,1) = length( find(max_all_Val < diff_obs(j)) );
+pPerm(j) = (1+nLarge(j,1)) / (nperm+1)
+end
+
