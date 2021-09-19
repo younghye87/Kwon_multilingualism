@@ -1,0 +1,229 @@
+% last modified on Jan 29, 2021
+
+clear; clc; 
+
+% original mat , regressed beh score (no partialcorr)
+load('nback_resid.mat');
+load('behavior.mat');
+
+mono_mat=sst_rsd(1:218,:);
+mono_mat=ytsp_reshape2to3(mono_mat');
+multi_mat=nback_rsd(219:end,:);
+multi_mat=ytsp_reshape2to3(multi_mat');
+behav = multi_nback;
+
+edu = edu_multi;
+behav_ctrl  = edu;
+train_mats  = multi_mat;
+test_mats = train_mats;
+
+k = 10; % K-fold
+n_sub       = size(train_mats,3);    %number of subjects         % number of subjects in each round of cross-validation
+n_node      = 268;                  % number of nodes
+aa          = ones(n_node,n_node);
+aa_upp      = triu(aa,1);
+upp_id      = find(aa_upp);         % indices of edges in the upper triangular of an n_node x n_node matrix
+n_edge      = length(upp_id);       % total number of edges 
+
+% Set prediction parameters
+thresh      = 0.01;     % threshold for feature selection
+thresh_opt  = 'p';
+pearson     = 1;        % pearson (1) or robust (0) correlation for feature selection
+alpha       = 40;
+userank     = 0;        % 1 = rank 0 = robust
+partial     = 1;        % use partial correlation to control for other attention measures
+plot_on     = 1;
+
+%----------------------------------------------------------------------------------
+
+pred_pos     = zeros(n_sub,1);
+pred_neg     = zeros(n_sub,1);
+pred_glm     = zeros(n_sub,1);
+pos_mask_all = zeros(n_node,n_node,n_sub);
+neg_mask_all = zeros(n_node,n_node,n_sub);
+pos_overlap  = zeros(n_node,n_node);
+neg_overlap  = zeros(n_node,n_node);
+
+cvFolds = cvpartition(size(train_mats,3),'Kfold',k);
+  
+
+for i = 1:k                  % iteratre through each fold
+   
+    i
+    
+    Ind = 1:size(train_mats,3);
+    
+  % set training and testing group
+   if length(Ind) == 110
+      if i == 1
+        testIdx = 1:cvFolds.TestSize(i);                % indices of test instances
+        trainIdx = setdiff(Ind,testIdx);                    % indices training instances
+        
+       else
+
+        testIdx = (cvFolds.TestSize(i)*(i-1))+1 : (cvFolds.TestSize(i)*(i-1) + cvFolds.TestSize(i));
+        trainIdx = setdiff(Ind,testIdx);                    % indices training instances
+      end 
+      
+   elseif length(Ind) == 218
+       if i == 1
+        testIdx = 1:cvFolds.TestSize(i);                % indices of test instances
+        trainIdx = setdiff(Ind,testIdx);                    % indices training instances
+
+       elseif i == 10
+        testIdx = (cvFolds.TestSize(i-1)*(i-2) + cvFolds.TestSize(i-1)) : n_sub;
+
+       else
+
+        testIdx = (cvFolds.TestSize(i)*(i-1)) : (cvFolds.TestSize(i)*(i-1) + cvFolds.TestSize(i) -1);
+        %testIdx = (cvFolds.TestSize(i)*(i-1))+1 : (cvFolds.TestSize(i)*(i-1)+1 + cvFolds.TestSize(i));                % indices of test instances
+        trainIdx = setdiff(Ind,testIdx);                    % indices training instances
+       end 
+   end
+   
+   
+    train_mats_tmp = train_mats(:,:,trainIdx);
+    train_behav = behav(trainIdx,:);
+    n_train_sub = length(train_behav);
+    
+    test_mats_tmp = train_mats(:,:,testIdx);
+    test_behav = behav(testIdx,:);
+    n_test_sub = length(test_behav);
+    
+    train_behav_ctrl = behav_ctrl(trainIdx,:);
+
+    % create n_train_sub x n_edge matrix
+    train_vect = reshape(train_mats_tmp, n_node*n_node, length(trainIdx))';
+    upp_vect   = train_vect(:,upp_id); 
+
+    % relate behavior to edge strength across training subjects
+    cp = zeros(n_edge, 1);
+    cr = zeros(n_edge, 1);
+
+
+    if partial == 0
+        if pearson == 1
+            [cr,cp] = corr(upp_vect,train_behav,'type','Pearson');
+        else
+            [b,stats] = robustfit(upp_vect(:,ii), train_behav);
+            cp(ii)    = stats.p(2);
+            cr(ii)    = sign(stats.t(2))*sqrt((stats.t(2)^2/(n_train_sub-2))/(1+(stats.t(2)^2/(n_train_sub-2))));
+        end
+    end
+    
+    if partial == 1
+        [cr,cp] = partialcorr(upp_vect,train_behav,train_behav_ctrl,'type','Pearson');
+    end
+
+
+    % select edges based on threshold
+    pos_edge = zeros(1, n_edge);
+    neg_edge = zeros(1, n_edge);
+    pos_mask = zeros(n_node, n_node);
+    neg_mask = zeros(n_node, n_node);
+    
+    if strcmp(thresh_opt, 'p')==1
+        cp_pos           = find(cp<thresh & cr>0);
+        pos_edge(cp_pos) = 1;
+        cp_neg           = find(cp<thresh & cr<0);
+        neg_edge(cp_neg) = 1;
+        pos_mask(upp_id) = pos_edge; % Here, masks are NOT symmetrical. To make symmetrical, set pos_mask = pos_mask + pos_mask'
+        neg_mask(upp_id) = neg_edge;
+    
+    elseif strcmp(thresh_opt, 'wt')==1
+
+        cp_pos           = find(cp<thresh & cr>0);
+        pos_edge(cp_pos) = -log(cp_pos);
+        cp_neg           = find(cp<thresh & cr<0);
+        neg_edge(cp_neg) = -log(cp_neg);
+        
+        pos_mask(upp_id) = pos_edge;
+        neg_mask(upp_id) = neg_edge;
+    end
+
+    % sum edges for training subjects
+    train_pos_sum = zeros(n_train_sub,1);
+    train_neg_sum = zeros(n_train_sub,1);
+
+    for j = 1:n_train_sub
+        train_pos_sum(j) = sum(nansum(pos_mask.*train_mats_tmp(:,:,j)));
+        train_neg_sum(j) = sum(nansum(neg_mask.*train_mats_tmp(:,:,j)));
+    end
+
+    % build model with training data
+    if userank == 1
+        fit_pos = polyfit(train_pos_sum, train_behav, 1);
+        fit_neg = polyfit(train_neg_sum, train_behav, 1);
+    elseif userank == 0
+        b_pos      = robustfit(train_pos_sum, train_behav);
+        b_neg      = robustfit(train_neg_sum, train_behav);
+        robGLM_fit = robustfit([train_pos_sum train_neg_sum],train_behav);
+    end
+
+    % generate predictions for left-out fold
+    for l = 1:n_test_sub
+        h = testIdx(l);
+        
+    test_pos_sum = nansum(nansum(pos_mask.*test_mats_tmp(:,:,l)));
+    test_neg_sum = nansum(nansum(neg_mask.*test_mats_tmp(:,:,l)));
+
+    if userank == 1
+        pred_pos(h) = (fit_pos(1)*test_pos_sum) + fit_pos(2);
+        pred_neg(h) = (fit_neg(1)*test_neg_sum) + fit_neg(2);
+
+        % GLM prediction
+        train_pos_sum_mean = mean(train_pos_sum);
+        train_pos_sum_std  = std(train_pos_sum);
+        train_pos_sum_norm = (train_pos_sum - train_pos_sum_mean)/train_pos_sum_std;
+
+        train_neg_sum_mean = mean(train_neg_sum);
+        train_neg_sum_std  = std(train_neg_sum);
+        train_neg_sum_norm = (train_neg_sum - train_neg_sum_mean)/train_neg_sum_std;
+
+        train_behav_mean   = mean(train_behav);
+        train_behav_std    = std(train_behav);
+        train_behav_norm   = (train_behav - train_behav_mean);
+
+        % run GLM
+        GLM_fit = [train_pos_sum_norm, train_neg_sum_norm]\train_behav_norm;
+
+        % apply GLM to TEST subj
+        test_pos_sum_norm = (test_pos_sum - train_pos_sum_mean)/train_pos_sum_std;
+        test_neg_sum_norm = (test_neg_sum - train_neg_sum_mean)/train_neg_sum_std;
+        pred_glm(h) = GLM_fit(1)*test_pos_sum_norm + GLM_fit(2)*test_neg_sum_norm + train_behav_mean;
+    elseif userank == 0
+        pred_pos(h) = (b_pos(2)*test_pos_sum) + b_pos(1);
+        pred_neg(h) = (b_neg(2)*test_neg_sum) + b_neg(1);
+        pred_glm(h) = robGLM_fit(1) + robGLM_fit(2)*test_pos_sum + robGLM_fit(3)*test_neg_sum;
+    end
+
+    pos_mask_all(:,:,h) = pos_mask;
+    neg_mask_all(:,:,h) = neg_mask;
+    end
+
+pos_overlap(sum(pos_mask_all,3)==n_sub) = 1;
+neg_overlap(sum(neg_mask_all,3)==n_sub) = 1;
+
+% r^2
+
+[Rsq, nmse] = cpm_calcPredRsq(pred_glm(testIdx,:),test_behav, train_behav);
+sum_Rsq(i,1)=Rsq;
+sum_nmse(i,1)=nmse;
+end
+
+if userank == 1
+    [r_pos, p_pos] = corr(behav, pred_pos,'type','Spearman');
+    [r_neg, p_neg] = corr(behav, pred_neg,'type','Spearman');
+    [r_glm, p_glm] = corr(behav, pred_glm,'type','Spearman');
+elseif userank == 0
+    [r_pos, p_pos] = corr(behav, pred_pos,'type','Pearson');
+    [r_neg, p_neg] = corr(behav, pred_neg,'type','Pearson');
+    [r_glm, p_glm] = corr(behav, pred_glm,'type','Pearson');
+    
+end
+
+
+mean(sum_Rsq)
+sum_Rsq(sum_Rsq<0)=0;
+mean(sum_Rsq)
+
