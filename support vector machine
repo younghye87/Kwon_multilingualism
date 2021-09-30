@@ -1,13 +1,8 @@
 % written by YoungHye Judy Kwon
 
-clear; clc;
-
 k = 10; %k-fold
 
 classes = [0,1]; % possible classes/labels
-
-load('matrix.mat');
-
 
 % two groups combined residual mat 
 features = sst;
@@ -45,11 +40,8 @@ for i = 1:k                           % iteratre through each fold
     trainIdx_1 = setdiff(Ind_1,testIdx_1);                    % indices training instances
     testIdx_2 = (cvFolds_2.TestSize(i-1)*(i-2)) + cvFolds_2.TestSize(i-1)  : (cvFolds_2.TestSize(i-1)*(i-2)) + cvFolds_2.TestSize(i-1) + cvFolds_2.TestSize(i) -1;    
     trainIdx_2 = setdiff(Ind_2,testIdx_2);   
-    
-   
    
    else
-       
        
     testIdx_1 = (cvFolds_1.TestSize(i)*(i-1)) : (cvFolds_1.TestSize(i)*(i-1) + cvFolds_1.TestSize(i) -1);      
     trainIdx_1 = setdiff(Ind_1,testIdx_1);                    % indices training instances
@@ -58,10 +50,6 @@ for i = 1:k                           % iteratre through each fold
       
    end
   
-   
-      
-      
-   
   train_features1 = features_1(trainIdx_1,:);
   train_features2 = features_2(trainIdx_2,:);
   train_features = cat(1,train_features1, train_features2);
@@ -69,8 +57,7 @@ for i = 1:k                           % iteratre through each fold
   train_Idx1 = labels_1(trainIdx_1,:);
   train_Idx2 = labels_2(trainIdx_2,:);
   train_Idx = cat(1,train_Idx1, train_Idx2);
-  
-    
+ 
   test_features1 = features_1(testIdx_1,:);
   test_features2 = features_2(testIdx_2,:);
   test_features = cat(1,test_features1, test_features2);
@@ -83,7 +70,6 @@ for i = 1:k                           % iteratre through each fold
   
    % run PCA
   [coeff,training,latent,tsquared,explained,mu] = pca(train_features,'Centered',false);
-  
   
  testing = test_features/coeff';
      
