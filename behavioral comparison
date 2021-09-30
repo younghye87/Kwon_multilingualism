@@ -1,6 +1,6 @@
 % written by YoungHye Judy Kwon
 
-%permutation + max-T for multiple comparisons and significance test (Apr 20, 2021)
+%permutation + max-T for multiple comparisons and significance test
 
 sample1 = mono;
 sample2 = multi;
