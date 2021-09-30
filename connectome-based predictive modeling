@@ -1,12 +1,6 @@
 % original script written by Monica Rosenberg
 % modified by YoungHye Judy Kwon (last updated on Jan 29, 2021)
 
-clear; clc; 
-
-% original mat , regressed beh score (no partialcorr)
-load('nback_resid.mat');
-load('behavior.mat');
-
 mono_mat=sst_rsd(1:218,:);
 mono_mat=ytsp_reshape2to3(mono_mat');
 multi_mat=nback_rsd(219:end,:);
@@ -50,7 +44,6 @@ cvFolds = cvpartition(size(train_mats,3),'Kfold',k);
 
 for i = 1:k                  % iteratre through each fold
    
-    i
     
     Ind = 1:size(train_mats,3);
     
